@@ -1,0 +1,544 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Startup Intelligence Platform API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: startups
+    description: Startup management
+  - name: upload
+    description: CSV upload operations
+  - name: enrichment
+    description: Enrichment job management
+  - name: chat
+    description: Chat and search interface
+  - name: dashboard
+    description: Dashboard statistics
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /startups:
+    get:
+      operationId: listStartups
+      tags: [startups]
+      summary: List startups with filters
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: domain
+          in: query
+          schema: { type: string }
+        - name: fundingStage
+          in: query
+          schema: { type: string }
+        - name: location
+          in: query
+          schema: { type: string }
+        - name: country
+          in: query
+          schema: { type: string }
+        - name: keyword
+          in: query
+          schema: { type: string }
+        - name: enrichmentStatus
+          in: query
+          schema: { type: string, enum: [all, enriched, pending, missing] }
+        - name: sortBy
+          in: query
+          schema: { type: string }
+        - name: sortDir
+          in: query
+          schema: { type: string, enum: [asc, desc] }
+      responses:
+        "200":
+          description: Paginated startup list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartupListResponse"
+
+  /startups/{id}:
+    get:
+      operationId: getStartup
+      tags: [startups]
+      summary: Get startup detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Startup detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartupDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /startups/{id}/enrich:
+    post:
+      operationId: triggerEnrichment
+      tags: [startups]
+      summary: Trigger enrichment for a startup
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "202":
+          description: Enrichment queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrichmentJob"
+        "404":
+          description: Not found
+
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/domain-breakdown:
+    get:
+      operationId: getDomainBreakdown
+      tags: [dashboard]
+      summary: Get startup count by domain
+      responses:
+        "200":
+          description: Domain breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DomainCount"
+
+  /dashboard/funding-breakdown:
+    get:
+      operationId: getFundingBreakdown
+      tags: [dashboard]
+      summary: Get startup count by funding stage
+      responses:
+        "200":
+          description: Funding breakdown
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FundingCount"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recently uploaded or enriched startups
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Startup"
+
+  /upload/csv:
+    post:
+      operationId: uploadCsv
+      tags: [upload]
+      summary: Upload and parse a CSV file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CsvUploadInput"
+      responses:
+        "200":
+          description: Parsed CSV preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsvPreview"
+        "400":
+          description: Invalid file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /upload/confirm:
+    post:
+      operationId: confirmUpload
+      tags: [upload]
+      summary: Confirm and import a parsed CSV
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmUploadInput"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+
+  /uploaded-files:
+    get:
+      operationId: listUploadedFiles
+      tags: [upload]
+      summary: List uploaded CSV files
+      responses:
+        "200":
+          description: Uploaded files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UploadedFile"
+
+  /enrichment-jobs:
+    get:
+      operationId: listEnrichmentJobs
+      tags: [enrichment]
+      summary: List enrichment jobs
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, running, completed, failed] }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Enrichment jobs list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrichmentJobListResponse"
+
+  /chat:
+    post:
+      operationId: chatQuery
+      tags: [chat]
+      summary: Query startups via natural language
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatInput"
+      responses:
+        "200":
+          description: Chat response with matched startups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+
+  /chat/history:
+    get:
+      operationId: getChatHistory
+      tags: [chat]
+      summary: Get recent chat queries
+      responses:
+        "200":
+          description: Chat history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatHistoryItem"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Startup:
+      type: object
+      required: [id, name, website, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        normalizedName: { type: ["string", "null"] }
+        website: { type: string }
+        pocName: { type: ["string", "null"] }
+        pocEmail: { type: ["string", "null"] }
+        linkedinUrl: { type: ["string", "null"] }
+        crunchbaseUrl: { type: ["string", "null"] }
+        tracxnUrl: { type: ["string", "null"] }
+        domain: { type: ["string", "null"] }
+        subdomain: { type: ["string", "null"] }
+        hqLocation: { type: ["string", "null"] }
+        country: { type: ["string", "null"] }
+        fundingStage: { type: ["string", "null"] }
+        totalFunding: { type: ["string", "null"] }
+        employeeCount: { type: ["integer", "null"] }
+        description: { type: ["string", "null"] }
+        websiteSummary: { type: ["string", "null"] }
+        confidenceScore: { type: ["number", "null"] }
+        lastEnrichedAt: { type: ["string", "null"] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+        enrichmentStatus: { type: string }
+
+    StartupDetail:
+      allOf:
+        - $ref: "#/components/schemas/Startup"
+        - type: object
+          properties:
+            sources:
+              type: array
+              items:
+                $ref: "#/components/schemas/StartupSource"
+            enrichmentJobs:
+              type: array
+              items:
+                $ref: "#/components/schemas/EnrichmentJob"
+
+    StartupListResponse:
+      type: object
+      required: [startups, total, page, limit]
+      properties:
+        startups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Startup"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    StartupSource:
+      type: object
+      required: [id, startupId, sourceType, extractedField]
+      properties:
+        id: { type: integer }
+        startupId: { type: integer }
+        sourceType: { type: string }
+        sourceUrl: { type: ["string", "null"] }
+        extractedField: { type: string }
+        extractedValue: { type: ["string", "null"] }
+        confidenceScore: { type: ["number", "null"] }
+        lastCheckedAt: { type: ["string", "null"] }
+
+    EnrichmentJob:
+      type: object
+      required: [id, startupId, jobType, status, createdAt]
+      properties:
+        id: { type: integer }
+        startupId: { type: integer }
+        startupName: { type: ["string", "null"] }
+        jobType: { type: string }
+        status: { type: string }
+        errorMessage: { type: ["string", "null"] }
+        createdAt: { type: string }
+        completedAt: { type: ["string", "null"] }
+
+    EnrichmentJobListResponse:
+      type: object
+      required: [jobs, total, page, limit]
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnrichmentJob"
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+
+    DashboardStats:
+      type: object
+      required: [totalStartups, enrichedStartups, pendingJobs, missingDataCount, uploadedFiles]
+      properties:
+        totalStartups: { type: integer }
+        enrichedStartups: { type: integer }
+        pendingJobs: { type: integer }
+        failedJobs: { type: integer }
+        missingDataCount: { type: integer }
+        uploadedFiles: { type: integer }
+        recentUploads: { type: integer }
+
+    DomainCount:
+      type: object
+      required: [domain, count]
+      properties:
+        domain: { type: string }
+        count: { type: integer }
+
+    FundingCount:
+      type: object
+      required: [fundingStage, count]
+      properties:
+        fundingStage: { type: string }
+        count: { type: integer }
+
+    CsvUploadInput:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+
+    CsvPreview:
+      type: object
+      required: [fileId, filename, rows, totalRows, columns]
+      properties:
+        fileId: { type: string }
+        filename: { type: string }
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/CsvRow"
+        totalRows: { type: integer }
+        columns:
+          type: array
+          items:
+            type: string
+        mappedColumns:
+          type: object
+          additionalProperties:
+            type: string
+
+    CsvRow:
+      type: object
+      required: [name, website]
+      properties:
+        name: { type: string }
+        website: { type: ["string", "null"] }
+        pocName: { type: ["string", "null"] }
+        pocEmail: { type: ["string", "null"] }
+        domain: { type: ["string", "null"] }
+        fundingStage: { type: ["string", "null"] }
+        location: { type: ["string", "null"] }
+
+    ConfirmUploadInput:
+      type: object
+      required: [fileId]
+      properties:
+        fileId: { type: string }
+
+    ImportResult:
+      type: object
+      required: [imported, skipped, errors]
+      properties:
+        imported: { type: integer }
+        skipped: { type: integer }
+        errors: { type: integer }
+        message: { type: string }
+
+    UploadedFile:
+      type: object
+      required: [id, filename, uploadedAt, rowCount, status]
+      properties:
+        id: { type: integer }
+        filename: { type: string }
+        uploadedAt: { type: string }
+        rowCount: { type: integer }
+        status: { type: string }
+
+    ChatInput:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string }
+
+    ChatResponse:
+      type: object
+      required: [query, parsedFilters, startups, totalMatched, cacheHit, processingMs]
+      properties:
+        query: { type: string }
+        parsedFilters:
+          $ref: "#/components/schemas/ParsedFilters"
+        startups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Startup"
+        totalMatched: { type: integer }
+        cacheHit: { type: boolean }
+        processingMs: { type: integer }
+        message: { type: ["string", "null"] }
+
+    ParsedFilters:
+      type: object
+      properties:
+        domain: { type: ["string", "null"] }
+        fundingStage: { type: ["string", "null"] }
+        location: { type: ["string", "null"] }
+        country: { type: ["string", "null"] }
+        keyword: { type: ["string", "null"] }
+        employeeCountMin: { type: ["integer", "null"] }
+        employeeCountMax: { type: ["integer", "null"] }
+        investor: { type: ["string", "null"] }
+
+    ChatHistoryItem:
+      type: object
+      required: [id, queryText, createdAt]
+      properties:
+        id: { type: integer }
+        queryText: { type: string }
+        parsedFilters:
+          $ref: "#/components/schemas/ParsedFilters"
+        resultCount: { type: ["integer", "null"] }
+        cacheHit: { type: boolean }
+        createdAt: { type: string }

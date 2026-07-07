@@ -1,0 +1,248 @@
+Build a lightweight internal startup intelligence platform.
+
+Core goal:
+I will upload CSV files containing startups we cater to. The CSV will include startup name, website, point-of-contact name, and POC email. The platform should store this data, enrich missing startup information in the background, and provide a chat interface where users can ask questions like:
+
+“Give me fintech startups in Seed stage based in Bangalore.”
+“Show AI startups in Mumbai.”
+“Find startups working in climate tech with Series A funding.”
+
+Important architecture:
+Create two separate pipelines:
+
+1. Data Updation / Knowledge Pipeline
+   This pipeline should run independently of user chat prompts.
+
+Features:
+
+* CSV upload page
+* Parse uploaded CSV
+* Normalize company names, websites, locations, funding stages, and domains
+* Store startups in PostgreSQL
+* Detect missing fields such as:
+
+  * domain / industry
+  * subdomain
+  * location
+  * funding stage
+  * founders
+  * employee count
+  * investors
+  * LinkedIn URL
+  * Crunchbase URL
+  * Tracxn URL
+* Create background enrichment jobs for missing fields
+* Enrichment should first crawl the startup’s own website
+* Then optionally use web search APIs if configured
+* Do not scrape LinkedIn, Crunchbase, or Tracxn directly unless API keys are configured
+* Store enriched facts with source URL, confidence score, and last verified date
+* Generate embeddings for startup descriptions and summaries
+* Cache crawled pages, extracted facts, and embeddings to reduce repeated LLM/API usage
+
+2. User Retrieval / Chat Pipeline
+   This pipeline should run when a user asks a question.
+
+Features:
+
+* Chat interface
+* Convert user prompt into structured filters:
+
+  * domain
+  * funding stage
+  * location
+  * employee count
+  * investor
+  * keyword / semantic concept
+* Use PostgreSQL for exact filtering
+* Use pgvector/vector search only for fuzzy semantic queries
+* Do not use LLM for simple filtering
+* Return matching startups with:
+
+  * startup name
+  * website
+  * POC name
+  * POC email
+  * domain
+  * location
+  * funding stage
+  * source
+  * confidence score
+  * last enriched date
+* If data is missing, show “Not available” and optionally queue enrichment in the background
+* Do not block the user while enrichment is running
+
+Tech stack:
+
+* Frontend: React or Next.js
+* Backend: Node.js/Express or FastAPI, whichever is easiest for local development
+* Database: PostgreSQL
+* Vector search: pgvector if available, otherwise store embeddings and simulate basic similarity search
+* Background jobs: simple job table + worker loop
+* File upload: CSV parser
+* LLM integration: make it optional using environment variables
+* Search API integration: make it optional using environment variables
+
+Important cost-saving architecture:
+Implement semantic caching.
+
+Do not only cache:
+Question → Answer
+
+Instead cache:
+Embedding → parsed filters / retrieval plan / result IDs
+
+Workflow:
+
+* Normalize user query
+* Generate embedding
+* Search semantic cache
+* Check similarity
+* Check freshness
+* If high confidence, reuse parsed filters
+* Always rerun the final SQL query to return fresh startup data
+* If medium confidence, use a cheaper/smaller model if available or rerun parser
+* If low confidence, call the main LLM/parser
+
+Cache metadata should include:
+
+* original query
+* query embedding
+* parsed filters
+* startup IDs returned
+* created_at
+* expires_at
+* source_versions
+* query_type
+* confidence_score
+* personalized / org_id
+
+Use these freshness rules:
+
+* Query parsing cache: 30 days
+* Startup search result cache: 1–7 days
+* Funding stage data: 7–30 days
+* Website summary: 30–90 days
+* CSV upload instructions: 90 days
+
+Database schema:
+Create tables for:
+
+startups:
+
+* id
+* name
+* normalized_name
+* website
+* poc_name
+* poc_email
+* linkedin_url
+* crunchbase_url
+* tracxn_url
+* domain
+* subdomain
+* hq_location
+* country
+* funding_stage
+* total_funding
+* employee_count
+* description
+* website_summary
+* confidence_score
+* last_enriched_at
+* created_at
+* updated_at
+
+startup_sources:
+
+* id
+* startup_id
+* source_type
+* source_url
+* extracted_field
+* extracted_value
+* confidence_score
+* last_checked_at
+
+enrichment_jobs:
+
+* id
+* startup_id
+* job_type
+* status
+* error_message
+* created_at
+* completed_at
+
+query_cache:
+
+* id
+* query_text
+* query_embedding
+* parsed_filters
+* result_startup_ids
+* similarity_score
+* query_type
+* created_at
+* expires_at
+* org_id
+
+uploaded_files:
+
+* id
+* filename
+* uploaded_at
+* row_count
+* status
+
+Core pages:
+
+1. Dashboard
+
+* total startups
+* enriched startups
+* missing data count
+* pending enrichment jobs
+
+2. CSV Upload
+
+* upload CSV
+* preview parsed rows
+* confirm import
+
+3. Startup Table
+
+* searchable/filterable list of startups
+* show enrichment status
+
+4. Chat
+
+* user can ask startup search questions
+* return structured startup results
+
+5. Startup Detail Page
+
+* show all known fields
+* show sources and confidence
+* show enrichment history
+
+Implementation rules:
+
+* Keep the system lightweight
+* Use SQL for structured filtering
+* Use vector search only for semantic/fuzzy matching
+* Use LLM only for query parsing, extraction from unstructured pages, and answer formatting
+* Cache aggressively
+* Never trust enriched data without storing source and confidence
+* Never overwrite manually uploaded CSV data unless the user confirms
+* External enrichment should update only missing or low-confidence fields
+* Make all API keys optional through environment variables
+
+Build the first working MVP with:
+
+* CSV upload
+* PostgreSQL storage
+* startup table
+* chat search using structured filters
+* basic semantic cache table
+* background enrichment job table
+* placeholder enrichment worker that can later be connected to search/crawling APIs
