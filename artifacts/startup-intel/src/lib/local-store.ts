@@ -810,6 +810,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readJson<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
   try {
     const value = localStorage.getItem(key);
     return value ? (JSON.parse(value) as T) : fallback;
@@ -828,6 +829,7 @@ function subscribe(callback: () => void) {
 }
 
 function getSnapshot() {
+  if (typeof window === "undefined") return "";
   return [
     localStorage.getItem(STARTUPS_KEY) ?? "",
     localStorage.getItem(UPLOADS_KEY) ?? "",

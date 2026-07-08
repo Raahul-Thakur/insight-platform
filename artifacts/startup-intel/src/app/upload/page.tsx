@@ -1,4 +1,4 @@
-import Upload from "@/pages/upload";
+import Upload from "@/views/upload";
 
 export default function Page() {
   return <Upload />;
