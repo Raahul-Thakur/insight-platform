@@ -15,6 +15,8 @@ The frontend stores imported CSV data in browser `localStorage`, so no database 
 Optional API server for backend routes and OpenAI enrichment:
 
 - Add an OpenAI key to `.env`: `OPENAI_API_KEY=sk-...`
+- For Supabase-backed Next API routes, also set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+- Optional AI cost controls are documented in `.env.example`, including `OPENAI_EXTRACTION_MODEL`, `OPENAI_ESCALATION_MODEL`, `ENRICHMENT_BATCH_SIZE`, `AI_MAX_PASSAGE_CHARS`, `AI_MAX_RETRIEVED_STARTUPS`, and `AI_MAX_STARTUPS_SENT_TO_MODEL`.
 - Run the API server: `npx pnpm@10.25.0 --filter @workspace/api-server run dev`
 - Run the frontend in another terminal: `npx pnpm@10.25.0 --filter @workspace/startup-intel run dev`
 
@@ -32,7 +34,13 @@ The API server uses app-local in-memory storage. Restarting the API process clea
 
 - Frontend: browser `localStorage`
 - Optional API server: in-memory process storage
-- No Postgres or external database is required
+- Supabase/Postgres is used by the Next API routes in `artifacts/startup-intel/src/app/api`; database changes live in `supabase/migrations`
+
+## AI Cost Controls
+
+- Apply Supabase migrations with `supabase db push`.
+- See `docs/ai-cost-optimization.md` for field-level enrichment, source hashing, vector retrieval, cache invalidation, and backfill steps.
+- AI usage is logged to `ai_usage_logs`; summaries are available through the `ai_cost_summary` SQL function.
 
 ## Stack
 

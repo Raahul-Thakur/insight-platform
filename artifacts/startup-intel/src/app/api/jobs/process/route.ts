@@ -1,30 +1,27 @@
 import OpenAI from "openai";
-import { DEFAULT_ORG_ID, errorJson, json, supabaseAdmin } from "@/server/supabase";
+import { DEFAULT_ORG_ID, embeddingSql, errorJson, generateEmbedding, json, supabaseAdmin } from "@/server/supabase";
+import { AI_LIMITS } from "@/server/ai/config";
+import {
+  buildEnrichmentPrompt,
+  buildSearchDocument,
+  createFieldMetadataRows,
+  ENRICHABLE_FIELDS,
+  fetchSourceSnapshot,
+  getFieldsDueForEnrichment,
+  modelForExtraction,
+  normalizeExtractedFields,
+  sha256,
+  shouldEscalate,
+} from "@/server/ai/enrichment";
+import { logAiUsage, roughTokenCount } from "@/server/ai/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const ENRICHABLE_FIELDS = [
-  "domain",
-  "subdomain",
-  "hq_location",
-  "country",
-  "funding_stage",
-  "total_funding",
-  "employee_count",
-  "founders",
-  "investors",
-  "description",
-  "website_summary",
-  "linkedin_url",
-  "crunchbase_url",
-  "tracxn_url",
-] as const;
-
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const limit = Math.min(Number(body?.limit ?? 3), 5);
+    const limit = Math.min(Number(body?.limit ?? AI_LIMITS.enrichmentBatchSize), 5);
     const db = supabaseAdmin();
     const { data: jobs, error } = await db
       .from("enrichment_jobs")
@@ -69,58 +66,99 @@ export async function GET() {
 
 async function enrichStartup(startup: any) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured.");
+  const started = Date.now();
+  const db = supabaseAdmin();
+  const { data: fieldStates } = await db
+    .from("startup_field_enrichment")
+    .select("field_name,status,confidence,refresh_after,content_hash,last_checked_at")
+    .eq("startup_id", startup.id);
+
+  const source = await fetchSourceSnapshot(db, startup);
+  const fieldsDue = getFieldsDueForEnrichment(startup, fieldStates ?? [], source?.changed ?? false);
+  if (fieldsDue.length === 0) {
+    await logAiUsage(db, {
+      orgId: startup.org_id ?? DEFAULT_ORG_ID,
+      feature: "enrichment",
+      routeType: "skip_fresh_fields",
+      model: null,
+      latencyMs: Date.now() - started,
+      recordsRetrieved: 1,
+      recordsSentToModel: 0,
+      status: "skipped",
+    });
+    return { fields: {}, overall_confidence: startup.confidence_score ?? 0.9, sources: [], skipped: true };
+  }
+
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const websiteContext = await getWebsiteText(startup.website);
-  const prompt = `Return only JSON for this startup enrichment. Fill missing or low-confidence fields only.
-
-Startup:
-${JSON.stringify({
-  name: startup.name,
-  website: startup.website,
-  domain: startup.domain,
-  location: startup.hq_location,
-  fundingStage: startup.funding_stage,
-  linkedinUrl: startup.linkedin_url,
-  crunchbaseUrl: startup.crunchbase_url,
-  tracxnUrl: startup.tracxn_url,
-})}
-
-Website text:
-${websiteContext.slice(0, 6000)}
-
-JSON shape:
-{
-  "domain": null,
-  "subdomain": null,
-  "hq_location": null,
-  "country": null,
-  "funding_stage": null,
-  "total_funding": null,
-  "employee_count": null,
-  "founders": [],
-  "investors": [],
-  "description": null,
-  "website_summary": null,
-  "linkedin_url": null,
-  "crunchbase_url": null,
-  "tracxn_url": null,
-  "overall_confidence": 0.0,
-  "sources": []
-}`;
+  let model = modelForExtraction(false);
+  let prompt = buildEnrichmentPrompt(startup, fieldsDue, source);
 
   const response = await client.responses.create({
-    model: process.env.OPENAI_ENRICHMENT_MODEL ?? "gpt-5.4-mini",
+    model,
     input: prompt,
     tools: [{ type: "web_search_preview" }],
-    max_output_tokens: 4096,
+    max_output_tokens: 1600,
   });
   const match = response.output_text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("OpenAI enrichment returned no JSON.");
-  return JSON.parse(match[0]);
+  let parsed = JSON.parse(match[0]);
+  let normalizedFields = normalizeExtractedFields(parsed, fieldsDue);
+  let escalated = false;
+  let escalationReason: string | null = null;
+
+  if (shouldEscalate(normalizedFields)) {
+    escalated = true;
+    escalationReason = "low_confidence_or_empty_extraction";
+    model = modelForExtraction(true);
+    prompt = `${prompt}\n\nPrevious low-confidence output:\n${response.output_text.slice(0, 2000)}\n\nResolve ambiguity if possible. Return only the same JSON shape.`;
+    const escalatedResponse = await client.responses.create({
+      model,
+      input: prompt,
+      tools: [{ type: "web_search_preview" }],
+      max_output_tokens: 1600,
+    });
+    const escalatedMatch = escalatedResponse.output_text.match(/\{[\s\S]*\}/);
+    if (escalatedMatch) {
+      parsed = JSON.parse(escalatedMatch[0]);
+      normalizedFields = normalizeExtractedFields(parsed, fieldsDue);
+    }
+  }
+
+  const outputText = JSON.stringify(parsed);
+  await logAiUsage(db, {
+    orgId: startup.org_id ?? DEFAULT_ORG_ID,
+    feature: "enrichment",
+    routeType: "field_extraction",
+    model,
+    inputTokens: roughTokenCount(prompt),
+    outputTokens: roughTokenCount(outputText),
+    latencyMs: Date.now() - started,
+    recordsRetrieved: 1,
+    recordsSentToModel: 1,
+    escalated,
+    escalationReason,
+  });
+
+  return {
+    ...Object.fromEntries(Object.entries(normalizedFields).map(([field, value]) => [field, value!.value])),
+    fields: normalizedFields,
+    fieldMetadataRows: createFieldMetadataRows(startup, normalizedFields, source, model, prompt, outputText),
+    overall_confidence: parsed.overall_confidence ?? Math.max(...Object.values(normalizedFields).map((field) => field.confidence), 0.5),
+    sources: Object.entries(normalizedFields).map(([field, value]) => ({
+      source_url: value!.sourceUrl ?? source?.url ?? startup.website ?? null,
+      extracted_field: field,
+      extracted_value: JSON.stringify(value!.value),
+      confidence_score: value!.confidence,
+    })),
+  };
 }
 
 async function applyEnrichment(startup: any, enriched: any) {
   const db = supabaseAdmin();
+  if (enriched.skipped) {
+    await upsertSearchDocument(db, startup);
+    return;
+  }
   const updates: Record<string, unknown> = {
     last_enriched_at: new Date().toISOString(),
     confidence_score: Math.max(startup.confidence_score ?? 0, Number(enriched.overall_confidence ?? 0.5)),
@@ -146,6 +184,10 @@ async function applyEnrichment(startup: any, enriched: any) {
   const result = await db.from("startups").update(updates).eq("id", startup.id);
   if (result.error) throw result.error;
 
+  if (Array.isArray(enriched.fieldMetadataRows) && enriched.fieldMetadataRows.length) {
+    await db.from("startup_field_enrichment").upsert(enriched.fieldMetadataRows, { onConflict: "startup_id,field_name" });
+  }
+
   if (Array.isArray(enriched.sources)) {
     await db.from("startup_sources").insert(enriched.sources.map((source: any) => ({
       org_id: DEFAULT_ORG_ID,
@@ -158,46 +200,39 @@ async function applyEnrichment(startup: any, enriched: any) {
       last_checked_at: new Date().toISOString(),
     })));
   }
-}
 
-async function getWebsiteText(website: string | null) {
-  if (!website) return "";
-  const db = supabaseAdmin();
-  const url = website.startsWith("http") ? website : `https://${website}`;
-  const cached = await db.from("crawled_pages").select("*").eq("normalized_url", normalizeUrl(url)).gt("expires_at", new Date().toISOString()).maybeSingle();
-  if (cached.data) return cached.data.text ?? "";
-
-  try {
-    const response = await fetch(url, { headers: { "user-agent": "StartupIntelBot/1.0" } });
-    if (!response.ok) return "";
-    const html = await response.text();
-    const text = html.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    await db.from("crawled_pages").upsert({
-      org_id: DEFAULT_ORG_ID,
-      url,
-      normalized_url: normalizeUrl(url),
-      title: null,
-      text,
-      fetched_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-    }, { onConflict: "org_id,normalized_url" });
-    return text;
-  } catch {
-    return "";
-  }
-}
-
-function normalizeUrl(url: string) {
-  try {
-    const parsed = new URL(url);
-    parsed.hash = "";
-    parsed.search = "";
-    return parsed.toString().replace(/\/$/, "");
-  } catch {
-    return url.toLowerCase();
-  }
+  await upsertSearchDocument(db, { ...startup, ...updates });
 }
 
 function camelField(field: string) {
   return field.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase());
+}
+
+async function upsertSearchDocument(db: any, startup: any) {
+  const content = buildSearchDocument(startup);
+  if (!content) return;
+  const contentHash = sha256(content);
+  const existing = await db
+    .from("startup_search_documents")
+    .select("content_hash")
+    .eq("startup_id", startup.id)
+    .eq("document_type", "profile")
+    .maybeSingle();
+  if (existing.data?.content_hash === contentHash) return;
+
+  await db.from("startup_search_documents").upsert({
+    org_id: startup.org_id ?? DEFAULT_ORG_ID,
+    startup_id: startup.id,
+    document_type: "profile",
+    content,
+    content_hash: contentHash,
+    embedding: embeddingSql(generateEmbedding(content)),
+    embedding_model: "local-hash-embedding-v1",
+    metadata_json: {
+      country: startup.country,
+      industry: startup.domain,
+      fundingStage: startup.funding_stage,
+      employeeCount: startup.employee_count,
+    },
+  }, { onConflict: "startup_id,document_type" });
 }
