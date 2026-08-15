@@ -4,11 +4,6 @@ import { enrichStartupViaWebSearch } from "../lib/webSearchAgent";
 const router: IRouter = Router();
 
 router.post("/web-enrichment/startup", async (req, res): Promise<void> => {
-  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "sk-...") {
-    res.status(400).json({ error: "OPENAI_API_KEY is not configured on the API server." });
-    return;
-  }
-
   const startup = req.body as {
     id?: unknown;
     name?: unknown;
@@ -39,8 +34,8 @@ router.post("/web-enrichment/startup", async (req, res): Promise<void> => {
 
     res.json(enriched);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "OpenAI web enrichment failed";
-    req.log.error({ err: error }, "OpenAI web enrichment failed");
+    const message = error instanceof Error ? error.message : "Factual website enrichment failed";
+    req.log.error({ err: error }, "Factual website enrichment failed");
     res.status(502).json({ error: message });
   }
 });

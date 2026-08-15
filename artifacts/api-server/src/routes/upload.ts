@@ -13,7 +13,7 @@ import {
   createEnrichmentJob,
   createStartup,
   createUploadedFile,
-  findStartupByNormalizedName,
+  findStartupByIdentity,
   listUploadedFiles,
   normalizeName,
   updateUploadedFile,
@@ -182,7 +182,7 @@ router.post("/upload/confirm", async (req, res): Promise<void> => {
       }
 
       const normalizedName = normalizeName(row.name);
-      if (findStartupByNormalizedName(normalizedName)) {
+      if (findStartupByIdentity({ name: row.name, website: row.website })) {
         skipped += 1;
         continue;
       }

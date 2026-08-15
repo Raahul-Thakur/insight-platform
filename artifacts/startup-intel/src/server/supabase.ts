@@ -1,10 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
+import { normalizeCompanyName } from "@workspace/enrichment-core";
 
 export type StartupRow = {
   id: number;
   org_id: string;
   name: string;
   normalized_name: string | null;
+  canonical_domain?: string | null;
   website: string;
   poc_name: string | null;
   poc_email: string | null;
@@ -96,7 +98,7 @@ export function toStartup(row: StartupRow) {
 }
 
 export function normalizeName(name: string) {
-  return name.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+  return normalizeCompanyName(name);
 }
 
 export function generateEmbedding(text: string, dims = 128) {

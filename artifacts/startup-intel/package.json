@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@workspace/enrichment-core": "workspace:*",
     "@supabase/supabase-js": "^2.58.0",
     "next": "^15.5.0",
     "openai": "latest"

@@ -31,7 +31,7 @@ async function processJob(jobId: number): Promise<void> {
   }
 
   try {
-    logger.info({ jobId, startupId: startup.id, name: startup.name }, "Starting web search enrichment");
+    logger.info({ jobId, startupId: startup.id, name: startup.name }, "Starting deterministic factual enrichment");
 
     const enriched = await enrichStartupViaWebSearch({
       id: startup.id,
@@ -48,7 +48,7 @@ async function processJob(jobId: number): Promise<void> {
       addStartupSources(
         enriched.sources.map((source) => ({
           startupId: startup.id,
-          sourceType: "web_search",
+          sourceType: source.sourceType,
           sourceUrl: source.sourceUrl,
           extractedField: source.extractedField,
           extractedValue: source.extractedValue,
@@ -83,7 +83,7 @@ async function processJob(jobId: number): Promise<void> {
     });
 
     logger.info(
-      { jobId, startupId: startup.id, confidence: enriched.overallConfidence },
+      { jobId, startupId: startup.id, confidence: enriched.overallConfidence, ...enriched.telemetry },
       "Enrichment job completed",
     );
   } catch (err) {

@@ -12,7 +12,7 @@ import { Activity, Database, AlertCircle, Clock, Zap, UploadCloud, ArrowRight, L
 import Link from "next/link";
 import { ChatPanel } from "@/components/chat-panel";
 import { StartupRegistry } from "@/components/startup-registry";
-import { enrichAllStartupsWithOpenAI, getDashboardData, listEnrichmentJobs, useLocalStoreVersion } from "@/lib/local-store";
+import { enrichAllStartups, getDashboardData, listEnrichmentJobs, useLocalStoreVersion } from "@/lib/local-store";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +45,7 @@ export default function Dashboard() {
   const handleBulkEnrich = async () => {
     setBulkProgress({ completed: 0, total: remainingToEnrich, failed: 0, currentName: "" });
     try {
-      const result = await enrichAllStartupsWithOpenAI(setBulkProgress);
+      const result = await enrichAllStartups(setBulkProgress);
       toast({
         title: "Bulk enrichment complete",
         description: `Enriched ${result.completed} of ${result.total}. Failed: ${result.failed}.`,

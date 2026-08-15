@@ -428,7 +428,7 @@ export function getStartup(id: number): LocalStartup | undefined {
   return readStartups().find((startup) => startup.id === id);
 }
 
-export async function enrichStartupWithOpenAI(id: number): Promise<void> {
+export async function enrichStartup(id: number): Promise<void> {
   if (typeof window !== "undefined") {
     const response = await fetch(`/api/startups/${id}/enrich`, { method: "POST" });
     const body = await response.json().catch(() => null);
@@ -453,7 +453,7 @@ export async function enrichStartupWithOpenAI(id: number): Promise<void> {
   const startedAt = new Date().toISOString();
   recordEnrichmentJob(id, {
     id: Date.now(),
-    jobType: "openai_web_enrichment",
+    jobType: "factual_enrichment",
     status: "running",
     createdAt: startedAt,
     errorMessage: null,
@@ -477,23 +477,23 @@ export async function enrichStartupWithOpenAI(id: number): Promise<void> {
 
     const body = await response.json().catch(() => null);
     if (!response.ok) {
-      throw new Error(body?.error ?? "OpenAI web enrichment failed");
+      throw new Error(body?.error ?? "Factual website enrichment failed");
     }
 
-    applyOpenAIEnrichment(id, body);
+    applyFactualEnrichment(id, body);
   } catch (error) {
     recordEnrichmentJob(id, {
       id: Date.now(),
-      jobType: "openai_web_enrichment",
+      jobType: "factual_enrichment",
       status: "failed",
       createdAt: new Date().toISOString(),
-      errorMessage: error instanceof Error ? error.message : "OpenAI web enrichment failed",
+      errorMessage: error instanceof Error ? error.message : "Factual enrichment failed",
     });
     throw error;
   }
 }
 
-export async function enrichAllStartupsWithOpenAI(
+export async function enrichAllStartups(
   onProgress?: (progress: { completed: number; total: number; failed: number; currentName: string }) => void,
 ) {
   if (typeof window !== "undefined") {
@@ -532,7 +532,7 @@ export async function enrichAllStartupsWithOpenAI(
   for (const startup of targets) {
     onProgress?.({ completed, total: targets.length, failed, currentName: startup.name });
     try {
-      await enrichStartupWithOpenAI(startup.id);
+      await enrichStartup(startup.id);
       completed += 1;
     } catch {
       failed += 1;
@@ -542,6 +542,11 @@ export async function enrichAllStartupsWithOpenAI(
   onProgress?.({ completed, total: targets.length, failed, currentName: "" });
   return { completed, failed, total: targets.length };
 }
+
+/** @deprecated Use enrichStartup; retained for API compatibility. */
+export const enrichStartupWithOpenAI = enrichStartup;
+/** @deprecated Use enrichAllStartups; retained for API compatibility. */
+export const enrichAllStartupsWithOpenAI = enrichAllStartups;
 
 export function getDashboardData() {
   if (typeof window !== "undefined") {
@@ -724,7 +729,7 @@ function writeChatHistory(history: LocalChatHistoryItem[]) {
   localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(history));
 }
 
-function applyOpenAIEnrichment(id: number, enriched: any) {
+function applyFactualEnrichment(id: number, enriched: any) {
   const now = new Date().toISOString();
   const startups = readStartups();
   const next = startups.map((startup) => {
@@ -750,13 +755,13 @@ function applyOpenAIEnrichment(id: number, enriched: any) {
       lastEnrichedAt: now,
       updatedAt: now,
       sources: [
-        ...buildOpenAISources(enriched?.sources),
+        ...buildEnrichmentSources(enriched?.sources),
         ...startup.sources,
       ],
       enrichmentJobs: [
         {
           id: Date.now(),
-          jobType: "openai_web_enrichment",
+          jobType: "factual_enrichment",
           status: "completed",
           createdAt: now,
           errorMessage: null,
@@ -787,7 +792,7 @@ function recordEnrichmentJob(id: number, job: LocalStartup["enrichmentJobs"][num
   notifyChange();
 }
 
-function buildOpenAISources(sources: unknown): LocalStartup["sources"] {
+function buildEnrichmentSources(sources: unknown): LocalStartup["sources"] {
   if (!Array.isArray(sources)) return [];
   const seed = Date.now();
   return sources.map((source: any, index: number) => ({

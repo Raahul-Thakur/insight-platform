@@ -4,6 +4,9 @@
   "files": [],
   "references": [
     {
+      "path": "./lib/enrichment-core"
+    },
+    {
       "path": "./lib/api-client-react"
     },
     {

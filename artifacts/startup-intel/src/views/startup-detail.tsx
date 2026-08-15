@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Globe, MapPin, Users, DollarSign, Activity, Database, CheckCircle, Clock, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { enrichStartupWithOpenAI, getStartup, useLocalStoreVersion } from "@/lib/local-store";
+import { enrichStartup, getStartup, useLocalStoreVersion } from "@/lib/local-store";
 
 export default function StartupDetail() {
   const params = useParams();
@@ -23,11 +23,11 @@ export default function StartupDetail() {
   const handleEnrich = async () => {
     setIsEnriching(true);
     try {
-      await enrichStartupWithOpenAI(id);
-      toast({ title: "OpenAI Enrichment Complete", description: "Web research fields were saved locally." });
+      await enrichStartup(id);
+      toast({ title: "Factual enrichment complete", description: "First-party facts and source evidence were saved." });
     } catch (error) {
       toast({
-        title: "OpenAI enrichment failed",
+        title: "Enrichment failed",
         description: error instanceof Error ? error.message : "Check that the API server is running.",
         variant: "destructive",
       });
@@ -85,7 +85,7 @@ export default function StartupDetail() {
             className="font-mono uppercase tracking-wider rounded-sm"
           >
             {isEnriching ? <Activity className="w-4 h-4 mr-2 animate-pulse" /> : <Database className="w-4 h-4 mr-2" />}
-            Run OpenAI Enrichment
+            Run Factual Enrichment
           </Button>
         </div>
       </div>
@@ -110,7 +110,7 @@ export default function StartupDetail() {
               <div className="mt-8 pt-6 border-t border-border/50">
                 <div className="text-xs font-mono uppercase text-muted-foreground mb-3 tracking-wider">Description</div>
                 <p className="text-sm text-foreground/90 leading-relaxed font-sans">
-                  {startup.description || startup.websiteSummary || <span className="text-muted-foreground italic">No description available. Run enrichment to generate.</span>}
+                  {startup.description || startup.websiteSummary || <span className="text-muted-foreground italic">No description available. Run enrichment to retrieve it.</span>}
                 </p>
               </div>
             </CardContent>

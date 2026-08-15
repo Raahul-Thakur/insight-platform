@@ -1,5 +1,7 @@
 # AI Cost Optimization
 
+> Historical optimization notes. The current factual-first implementation and live validation report are in [factual-enrichment-architecture.md](./factual-enrichment-architecture.md).
+
 ## Final Architecture
 
 The database remains the source of truth. CSV imports write structured startup fields to `startups`, enrichment writes field-level metadata to `startup_field_enrichment`, and chatbot retrieval returns database records before any model is considered. The LLM is never given the full startup table.

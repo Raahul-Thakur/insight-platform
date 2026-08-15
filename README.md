@@ -12,9 +12,9 @@ Windows quick start:
 
 The frontend stores imported CSV data in browser `localStorage`, so no database server is required.
 
-Optional API server for backend routes and OpenAI enrichment:
+Optional API server for backend routes and deterministic website enrichment:
 
-- Add an OpenAI key to `.env`: `OPENAI_API_KEY=sk-...`
+- An OpenAI key is optional and is used only for explicitly requested intelligence synthesis, not factual enrichment.
 - For Supabase-backed Next API routes, also set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
 - Optional AI cost controls are documented in `.env.example`, including `OPENAI_EXTRACTION_MODEL`, `OPENAI_ESCALATION_MODEL`, `ENRICHMENT_BATCH_SIZE`, `AI_MAX_PASSAGE_CHARS`, `AI_MAX_RETRIEVED_STARTUPS`, and `AI_MAX_STARTUPS_SENT_TO_MODEL`.
 - Run the API server: `npx pnpm@10.25.0 --filter @workspace/api-server run dev`
@@ -58,5 +58,6 @@ The API server uses app-local in-memory storage. Restarting the API process clea
 - `artifacts/startup-intel/src/pages/` - frontend pages
 - `artifacts/api-server/src/lib/appStore.ts` - optional API in-memory persistence
 - `artifacts/api-server/src/routes/` - Express route handlers
-- `artifacts/api-server/src/lib/enrichmentWorker.ts` - optional OpenAI enrichment worker
+- `lib/enrichment-core` - shared entity resolution, secure crawler, parser, extractors, and reconciliation
+- `artifacts/api-server/src/lib/enrichmentWorker.ts` - optional factual enrichment worker
 - `lib/api-spec/openapi.yaml` - OpenAPI spec

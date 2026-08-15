@@ -156,6 +156,9 @@ importers:
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
+      '@workspace/enrichment-core':
+        specifier: workspace:*
+        version: link:../../lib/enrichment-core
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -217,6 +220,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.58.0
         version: 2.110.0
+      '@workspace/enrichment-core':
+        specifier: workspace:*
+        version: link:../../lib/enrichment-core
       next:
         specifier: ^15.5.0
         version: 15.5.20(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -420,11 +426,23 @@ importers:
         specifier: 'catalog:'
         version: 3.25.76
 
+  lib/enrichment-core:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.4
+      tsx:
+        specifier: 'catalog:'
+        version: 4.22.4
+
   scripts:
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 25.9.4
+      '@workspace/enrichment-core':
+        specifier: workspace:*
+        version: link:../lib/enrichment-core
       tsx:
         specifier: 'catalog:'
         version: 4.22.4

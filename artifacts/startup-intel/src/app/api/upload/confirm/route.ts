@@ -1,4 +1,5 @@
 import { DEFAULT_ORG_ID, errorJson, json, normalizeName, supabaseAdmin } from "@/server/supabase";
+import { canonicalWebsite, normalizeDomain } from "@workspace/enrichment-core";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,15 @@ export async function POST(request: Request) {
           continue;
         }
         const normalized = normalizeName(row.name);
+        const canonicalDomain = normalizeDomain(row.website);
+        if (canonicalDomain) {
+          const existing = await db.from("startups").select("id").eq("org_id", DEFAULT_ORG_ID)
+            .eq("canonical_domain", canonicalDomain).is("duplicate_of_startup_id", null).maybeSingle();
+          if (existing.data) {
+            skipped += 1;
+            continue;
+          }
+        }
         const manualFields = Object.entries(row)
           .filter(([, value]) => value !== null && value !== undefined && value !== "" && (!Array.isArray(value) || value.length > 0))
           .map(([key]) => key);
@@ -58,7 +68,8 @@ export async function POST(request: Request) {
             org_id: DEFAULT_ORG_ID,
             name: row.name.trim(),
             normalized_name: normalized,
-            website: row.website?.trim() || "https://unknown.com",
+            website: canonicalWebsite(row.website) ?? "https://unknown.com",
+            canonical_domain: canonicalDomain,
             poc_name: row.pocName?.trim() || null,
             poc_email: row.pocEmail?.trim() || null,
             domain: row.domain?.trim() || null,
@@ -86,7 +97,7 @@ export async function POST(request: Request) {
           await db.from("enrichment_jobs").insert({
             org_id: DEFAULT_ORG_ID,
             startup_id: result.data.id,
-            job_type: "openai_web_enrichment",
+            job_type: "factual_enrichment",
             status: "pending",
           });
         }

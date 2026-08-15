@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { normalizeCompanyName, normalizeDomain } from "@workspace/enrichment-core";
 
 export type AppStartup = {
   id: number;
@@ -7,6 +8,7 @@ export type AppStartup = {
   name: string;
   normalizedName: string | null;
   website: string;
+  canonicalDomain: string | null;
   pocName: string | null;
   pocEmail: string | null;
   linkedinUrl: string | null;
@@ -101,6 +103,10 @@ type CrawlPageCacheEntry = {
   normalizedUrl: string;
   title: string | null;
   text: string;
+  contentHash?: string | null;
+  etag?: string | null;
+  lastModified?: string | null;
+  parsedContent?: unknown;
   fetchedAt: string;
   expiresAt: string;
 };
@@ -167,11 +173,7 @@ const storePath = path.resolve(dataDir, "app-store.json");
 let state = loadState();
 
 export function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeCompanyName(name);
 }
 
 export function getStartupStatus(startup: AppStartup) {
@@ -262,6 +264,7 @@ export function createStartup(input: Partial<AppStartup> & Pick<AppStartup, "nam
     name: input.name,
     normalizedName: input.normalizedName ?? normalizeName(input.name),
     website: input.website,
+    canonicalDomain: input.canonicalDomain ?? normalizeDomain(input.website),
     pocName: input.pocName ?? null,
     pocEmail: input.pocEmail ?? null,
     linkedinUrl: input.linkedinUrl ?? null,
@@ -294,6 +297,12 @@ export function createStartup(input: Partial<AppStartup> & Pick<AppStartup, "nam
 
 export function findStartupByNormalizedName(normalizedName: string, orgId = DEFAULT_ORG_ID) {
   return state.startups.find((startup) => startup.orgId === orgId && startup.normalizedName === normalizedName);
+}
+
+export function findStartupByIdentity(input: { name: string; website?: string | null }, orgId = DEFAULT_ORG_ID) {
+  const domain = normalizeDomain(input.website);
+  if (domain) return state.startups.find((startup) => startup.orgId === orgId && startup.canonicalDomain === domain);
+  return findStartupByNormalizedName(normalizeName(input.name), orgId);
 }
 
 export function updateStartup(id: number, updates: Partial<AppStartup>, options: { force?: boolean } = {}) {
@@ -363,7 +372,7 @@ export function addStartupSources(inputSources: Array<Omit<AppStartupSource, "id
   return created;
 }
 
-export function createEnrichmentJob(startupId: number, jobType = "full_enrich") {
+export function createEnrichmentJob(startupId: number, jobType = "factual_enrichment") {
   const startup = getStartup(startupId);
   const job: AppEnrichmentJob = {
     id: state.nextJobId++,
@@ -629,7 +638,7 @@ export function getCachedCrawlPage(url: string, orgId = DEFAULT_ORG_ID) {
   );
 }
 
-export function cacheCrawlPage(input: { url: string; title?: string | null; text: string; orgId?: string }) {
+export function cacheCrawlPage(input: { url: string; title?: string | null; text: string; contentHash?: string | null; etag?: string | null; lastModified?: string | null; parsedContent?: unknown; expiresAt?: string; orgId?: string }) {
   const orgId = input.orgId ?? DEFAULT_ORG_ID;
   const normalizedUrl = normalizeUrl(input.url);
   const existing = state.crawlPageCache.find((entry) => entry.orgId === orgId && entry.normalizedUrl === normalizedUrl);
@@ -640,8 +649,12 @@ export function cacheCrawlPage(input: { url: string; title?: string | null; text
     normalizedUrl,
     title: input.title ?? null,
     text: input.text,
+    contentHash: input.contentHash ?? existing?.contentHash ?? null,
+    etag: input.etag ?? existing?.etag ?? null,
+    lastModified: input.lastModified ?? existing?.lastModified ?? null,
+    parsedContent: input.parsedContent ?? existing?.parsedContent,
     fetchedAt: new Date().toISOString(),
-    expiresAt: addDays(WEBSITE_CACHE_DAYS),
+    expiresAt: input.expiresAt ?? addDays(WEBSITE_CACHE_DAYS),
   };
   if (existing) Object.assign(existing, entry);
   else state.crawlPageCache.unshift(entry);
@@ -925,6 +938,7 @@ function loadState(): StoreState {
     next.startups = (next.startups ?? []).map((startup) => ({
       ...startup,
       orgId: startup.orgId ?? DEFAULT_ORG_ID,
+      canonicalDomain: startup.canonicalDomain ?? normalizeDomain(startup.website),
       founders: startup.founders ?? [],
       investors: startup.investors ?? [],
       manualFields: startup.manualFields ?? [],

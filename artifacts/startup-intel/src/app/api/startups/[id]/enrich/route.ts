@@ -7,13 +7,15 @@ export async function POST(_request: NextRequest, context: { params: Promise<{ i
   try {
     const { id } = await context.params;
     const startupId = Number(id);
+    const body = await _request.json().catch(() => ({}));
+    const jobType = body?.level === "intelligence" ? "intelligence_enrichment" : "factual_enrichment";
     const db = supabaseAdmin();
     const { data, error } = await db
       .from("enrichment_jobs")
       .insert({
         startup_id: startupId,
         org_id: DEFAULT_ORG_ID,
-        job_type: "openai_web_enrichment",
+        job_type: jobType,
         status: "pending",
       })
       .select("*")
