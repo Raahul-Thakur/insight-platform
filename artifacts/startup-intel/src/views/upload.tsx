@@ -9,10 +9,11 @@ import { useToast } from "@/hooks/use-toast";
 import {
   importPreview,
   listUploads,
-  previewCsvFile,
+  previewSpreadsheetFile,
   type LocalCsvPreview,
   useLocalStoreVersion,
 } from "@/lib/local-store";
+import { MAX_SPREADSHEET_BYTES, SPREADSHEET_ACCEPT, spreadsheetFormat } from "@/lib/spreadsheet-import";
 
 export default function Upload() {
   const [file, setFile] = useState<File | null>(null);
@@ -37,11 +38,19 @@ export default function Upload() {
   };
 
   const handleFileSelected = (selectedFile: File) => {
-    if (!selectedFile.name.endsWith('.csv')) {
+    if (!spreadsheetFormat(selectedFile.name)) {
       toast({
         title: "Invalid file type",
-        description: "Please select a .csv file",
+        description: "Please select a .csv or .xlsx file.",
         variant: "destructive"
+      });
+      return;
+    }
+    if (selectedFile.size === 0 || selectedFile.size > MAX_SPREADSHEET_BYTES) {
+      toast({
+        title: selectedFile.size === 0 ? "Empty file" : "File too large",
+        description: selectedFile.size === 0 ? "The selected file is empty." : "CSV and XLSX files must be 10 MB or smaller.",
+        variant: "destructive",
       });
       return;
     }
@@ -54,19 +63,19 @@ export default function Upload() {
 
     setIsPreviewing(true);
     try {
-      const data = await previewCsvFile(file);
+      const data = await previewSpreadsheetFile(file);
       setPreview(data);
       if (data.totalRows === 0) {
         toast({
           title: "No rows found",
-          description: "The CSV parsed successfully, but no startup rows were detected.",
+          description: "The file parsed successfully, but no startup rows were detected.",
           variant: "destructive",
         });
       }
     } catch (err: any) {
       toast({
         title: "Upload failed",
-        description: err.message || "Failed to preview CSV",
+        description: err.message || "Failed to preview the spreadsheet",
         variant: "destructive"
       });
     } finally {
@@ -89,7 +98,7 @@ export default function Upload() {
     } catch (err: any) {
       toast({
         title: "Import failed",
-        description: err.message || "Failed to import CSV",
+        description: err.message || "Failed to import the spreadsheet",
         variant: "destructive"
       });
     } finally {
@@ -101,14 +110,14 @@ export default function Upload() {
     <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full">
       <div>
         <h1 className="text-3xl font-bold font-mono text-foreground uppercase tracking-tight">Data_Ingestion</h1>
-        <p className="text-muted-foreground text-sm font-mono mt-1">Upload CSV rosters for bulk processing and enrichment</p>
+        <p className="text-muted-foreground text-sm font-mono mt-1">Upload CSV or Excel rosters for bulk processing and enrichment</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-lg font-mono uppercase">Upload Source</CardTitle>
-            <CardDescription className="font-mono text-xs">Drag and drop a CSV file or click to browse. Expected headers: name, website (optional: pocName, pocEmail, domain, location)</CardDescription>
+            <CardDescription className="font-mono text-xs">Drag and drop a CSV or XLSX file. Excel files use the first worksheet and are converted to CSV before import. Expected headers: name, website (optional: pocName, pocEmail, domain, location)</CardDescription>
           </CardHeader>
           <CardContent>
             {!preview ? (
@@ -125,7 +134,7 @@ export default function Upload() {
                     {file ? (
                       <p className="font-mono text-sm text-foreground">{file.name} ({(file.size / 1024).toFixed(1)} KB)</p>
                     ) : (
-                      <p className="font-mono text-sm text-muted-foreground">Drag and drop CSV here, or <label className="text-primary cursor-pointer hover:underline">browse<input type="file" className="hidden" accept=".csv" onChange={handleFileInput} /></label></p>
+                      <p className="font-mono text-sm text-muted-foreground">Drag and drop CSV/XLSX here, or <label className="text-primary cursor-pointer hover:underline">browse<input type="file" className="hidden" accept={SPREADSHEET_ACCEPT} onChange={handleFileInput} /></label></p>
                     )}
                   </div>
                   {file && (
@@ -147,7 +156,10 @@ export default function Upload() {
                     <CheckCircle className="w-5 h-5 text-primary" />
                     <div>
                       <p className="font-mono text-sm font-bold text-foreground">File parsed successfully</p>
-                      <p className="font-mono text-xs text-muted-foreground">{preview.filename} • {preview.totalRows} rows found</p>
+                      <p className="font-mono text-xs text-muted-foreground">{preview.filename} | {preview.totalRows} rows found</p>
+                      {preview.sourceFormat === "xlsx" && (
+                        <p className="font-mono text-xs text-primary mt-1">First worksheet converted to {preview.normalizedFilename}</p>
+                      )}
                     </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => { setFile(null); setPreview(null); }} className="font-mono text-xs">

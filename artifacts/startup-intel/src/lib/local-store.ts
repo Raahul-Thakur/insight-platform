@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { spreadsheetFileToCsv, type SpreadsheetFormat } from "./spreadsheet-import";
 
 const STARTUPS_KEY = "startup-intel:startups";
 const UPLOADS_KEY = "startup-intel:uploads";
@@ -79,6 +80,8 @@ export type LocalCsvRow = Omit<
 export type LocalCsvPreview = {
   fileId: string;
   filename: string;
+  normalizedFilename: string;
+  sourceFormat: SpreadsheetFormat;
   totalRows: number;
   columns: string[];
   rows: LocalCsvRow[];
@@ -149,9 +152,9 @@ export function useLocalStoreVersion() {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-export async function previewCsvFile(file: File): Promise<LocalCsvPreview> {
-  const text = await file.text();
-  const records = parseCsv(text);
+export async function previewSpreadsheetFile(file: File): Promise<LocalCsvPreview> {
+  const normalized = await spreadsheetFileToCsv(file);
+  const records = parseCsv(normalized.csvText);
   const [headers = [], ...body] = records;
   const rows = body
     .filter((row) => row.some((cell) => cell.trim() !== ""))
@@ -161,11 +164,16 @@ export async function previewCsvFile(file: File): Promise<LocalCsvPreview> {
   return {
     fileId: `${Date.now()}-${file.name}`,
     filename: file.name,
+    normalizedFilename: normalized.normalizedFilename,
+    sourceFormat: normalized.format,
     totalRows: rows.length,
     columns: headers,
     rows,
   };
 }
+
+/** @deprecated Use previewSpreadsheetFile. */
+export const previewCsvFile = previewSpreadsheetFile;
 
 export async function importPreview(preview: LocalCsvPreview): Promise<LocalImportResult> {
   if (typeof window !== "undefined") {
@@ -173,7 +181,8 @@ export async function importPreview(preview: LocalCsvPreview): Promise<LocalImpo
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        filename: preview.filename,
+        filename: preview.normalizedFilename,
+        originalFilename: preview.filename,
         rows: preview.rows.map((row) => ({
           name: row.name,
           website: row.website,

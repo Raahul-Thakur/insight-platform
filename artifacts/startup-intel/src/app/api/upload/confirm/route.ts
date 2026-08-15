@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const rows = Array.isArray(body?.rows) ? (body.rows as ImportRow[]) : [];
     const filename = typeof body?.filename === "string" ? body.filename : "upload.csv";
+    const originalFilename = typeof body?.originalFilename === "string" ? body.originalFilename : filename;
     const db = supabaseAdmin();
     let imported = 0;
     let skipped = 0;
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       .insert({
         org_id: DEFAULT_ORG_ID,
         filename,
-        original_filename: filename,
+        original_filename: originalFilename,
         row_count: rows.length,
         status: "importing",
       })

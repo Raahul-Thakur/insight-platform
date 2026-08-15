@@ -3,6 +3,7 @@ import path from "path";
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { parse } from "csv-parse/sync";
+import { readSheet } from "read-excel-file/node";
 import {
   ConfirmUploadBody,
   ConfirmUploadResponse,
@@ -41,10 +42,11 @@ const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype === "text/csv" || file.originalname.endsWith(".csv")) {
+    const extension = path.extname(file.originalname).toLowerCase();
+    if (extension === ".csv" || extension === ".xlsx") {
       cb(null, true);
     } else {
-      cb(new Error("Only CSV files are allowed"));
+      cb(new Error("Only CSV and XLSX files are allowed"));
     }
   },
 });
@@ -89,7 +91,7 @@ const COLUMN_MAP: Record<string, string> = {
 
 const parsedPreviews = new Map<
   string,
-  { rows: Record<string, string | null>[]; filename: string; filepath: string; mapping: Record<string, string> }
+  { rows: Record<string, string | null>[]; filename: string; originalFilename: string; filepath: string; mapping: Record<string, string> }
 >();
 
 router.post("/upload/csv", upload.single("file"), async (req, res): Promise<void> => {
@@ -98,25 +100,40 @@ router.post("/upload/csv", upload.single("file"), async (req, res): Promise<void
     return;
   }
 
-  const filepath = req.file.path;
-  const filename = req.file.originalname;
+  let filepath = req.file.path;
+  const originalFilename = req.file.originalname;
+  const isXlsx = path.extname(originalFilename).toLowerCase() === ".xlsx";
+  const normalizedFilename = isXlsx ? replaceExtension(originalFilename, ".csv") : originalFilename;
 
   let records: Record<string, string>[];
   try {
-    records = parse(fs.readFileSync(filepath, "utf-8"), {
+    let csvText: string;
+    if (isXlsx) {
+      const rows = await readSheet(filepath);
+      validateSpreadsheetDimensions(rows);
+      csvText = rowsToCsv(rows);
+      const convertedPath = replaceExtension(filepath, ".csv");
+      fs.writeFileSync(convertedPath, csvText, "utf-8");
+      fs.unlinkSync(filepath);
+      filepath = convertedPath;
+    } else {
+      csvText = stripBom(fs.readFileSync(filepath, "utf-8"));
+    }
+    records = parse(csvText, {
       columns: true,
       skip_empty_lines: true,
       trim: true,
     }) as Record<string, string>[];
-  } catch {
-    fs.unlinkSync(filepath);
-    res.status(400).json({ error: "Failed to parse CSV: invalid format" });
+  } catch (error) {
+    removeFile(filepath);
+    if (isXlsx) removeFile(replaceExtension(req.file.path, ".csv"));
+    res.status(400).json({ error: error instanceof Error ? error.message : "Failed to parse spreadsheet" });
     return;
   }
 
   if (records.length === 0) {
-    fs.unlinkSync(filepath);
-    res.status(400).json({ error: "CSV file is empty" });
+    removeFile(filepath);
+    res.status(400).json({ error: "The spreadsheet contains no data rows" });
     return;
   }
 
@@ -127,17 +144,18 @@ router.post("/upload/csv", upload.single("file"), async (req, res): Promise<void
 
   parsedPreviews.set(fileId, {
     rows: records as Record<string, string | null>[],
-    filename,
+    filename: normalizedFilename,
+    originalFilename,
     filepath,
     mapping: columnMapping,
   });
 
-  req.log.info({ fileId, rowCount: records.length, filename }, "CSV parsed");
+  req.log.info({ fileId, rowCount: records.length, originalFilename, normalizedFilename, convertedFromXlsx: isXlsx }, "Spreadsheet parsed and normalized to CSV");
 
   res.json(
     UploadCsvResponse.parse({
       fileId,
-      filename,
+      filename: originalFilename,
       rows,
       totalRows: records.length,
       columns,
@@ -164,7 +182,7 @@ router.post("/upload/confirm", async (req, res): Promise<void> => {
   const columns = Object.keys(preview.rows[0] ?? {});
   const uploadRecord = createUploadedFile({
     filename: `${Date.now()}-${preview.filename}`,
-    originalFilename: preview.filename,
+    originalFilename: preview.originalFilename,
     rowCount: preview.rows.length,
     status: "importing",
   });
@@ -225,7 +243,7 @@ router.post("/upload/confirm", async (req, res): Promise<void> => {
     // Temp-file cleanup is best effort.
   }
 
-  req.log.info({ imported, skipped, errors, filename: preview.filename }, "CSV import complete");
+  req.log.info({ imported, skipped, errors, filename: preview.filename }, "Spreadsheet import complete");
 
   res.json(
     ConfirmUploadResponse.parse({
@@ -284,6 +302,43 @@ function splitList(value: string | null | undefined) {
     .split(/[;,|]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function validateSpreadsheetDimensions(rows: unknown[][]) {
+  if (rows.length === 0 || rows.every((row) => row.every((cell) => cell == null || cell === ""))) {
+    throw new Error("The first worksheet is empty");
+  }
+  if (rows.length > 50_001) throw new Error("The spreadsheet exceeds the 50,000-row import limit");
+  if (rows.some((row) => row.length > 100)) throw new Error("The spreadsheet exceeds the 100-column import limit");
+}
+
+function rowsToCsv(rows: unknown[][]) {
+  return rows.map((row) => row.map((cell) => escapeCsvCell(cellToString(cell))).join(",")).join("\r\n");
+}
+
+function cellToString(value: unknown) {
+  if (value == null) return "";
+  if (value instanceof Date) {
+    const iso = value.toISOString();
+    return iso.endsWith("T00:00:00.000Z") ? iso.slice(0, 10) : iso;
+  }
+  return String(value);
+}
+
+function escapeCsvCell(value: string) {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function replaceExtension(filename: string, extension: string) {
+  return filename.replace(/\.[^.]+$/, "") + extension;
+}
+
+function stripBom(value: string) {
+  return value.charCodeAt(0) === 0xfeff ? value.slice(1) : value;
+}
+
+function removeFile(filepath: string) {
+  try { fs.unlinkSync(filepath); } catch { /* best-effort cleanup */ }
 }
 
 export default router;

@@ -13,7 +13,7 @@ tags:
   - name: startups
     description: Startup management
   - name: upload
-    description: CSV upload operations
+    description: CSV and XLSX upload operations
   - name: enrichment
     description: Enrichment job management
   - name: chat
@@ -185,7 +185,8 @@ paths:
     post:
       operationId: uploadCsv
       tags: [upload]
-      summary: Upload and parse a CSV file
+      summary: Upload and parse a CSV or XLSX file
+      description: XLSX uploads use the first worksheet and are normalized to CSV before parsing.
       requestBody:
         required: true
         content:
@@ -194,7 +195,7 @@ paths:
               $ref: "#/components/schemas/CsvUploadInput"
       responses:
         "200":
-          description: Parsed CSV preview
+          description: Parsed spreadsheet preview
           content:
             application/json:
               schema:
@@ -210,7 +211,7 @@ paths:
     post:
       operationId: confirmUpload
       tags: [upload]
-      summary: Confirm and import a parsed CSV
+      summary: Confirm and import a parsed spreadsheet
       requestBody:
         required: true
         content:
@@ -229,7 +230,7 @@ paths:
     get:
       operationId: listUploadedFiles
       tags: [upload]
-      summary: List uploaded CSV files
+      summary: List uploaded spreadsheet files
       responses:
         "200":
           description: Uploaded files
@@ -435,10 +436,12 @@ components:
 
     CsvUploadInput:
       type: object
+      required: [file]
       properties:
         file:
           type: string
           format: binary
+          description: A .csv or .xlsx file. XLSX imports use the first worksheet.
 
     CsvPreview:
       type: object

@@ -1,6 +1,6 @@
 # Startup Radar
 
-An internal startup intelligence platform for tracking, enriching, and querying a portfolio of startups. Upload CSVs, review startup profiles, and query the data from the app.
+An internal startup intelligence platform for tracking, enriching, and querying a portfolio of startups. Upload CSV or XLSX files, review startup profiles, and query the data from the app.
 
 ## Run
 
@@ -10,7 +10,7 @@ Windows quick start:
 - Run the app: `npx pnpm@10.25.0 --filter @workspace/startup-intel run dev`
 - Open: `http://localhost:5173`
 
-The frontend stores imported CSV data in browser `localStorage`, so no database server is required.
+The frontend normalizes uploaded CSV or XLSX data to CSV and stores imported data in browser `localStorage`, so no database server is required.
 
 Optional API server for backend routes and deterministic website enrichment:
 
@@ -50,7 +50,7 @@ The API server uses app-local in-memory storage. Restarting the API process clea
 - Validation: Zod (`zod/v4`)
 - API codegen: Orval
 - Build: esbuild
-- File upload: multer + csv-parse
+- File upload: multer + csv-parse + read-excel-file
 
 ## Where Things Live
 

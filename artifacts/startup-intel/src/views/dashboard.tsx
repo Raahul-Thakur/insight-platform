@@ -304,7 +304,7 @@ function EmptyState() {
         <div>
           <h2 className="text-2xl font-mono font-bold uppercase tracking-tight text-foreground">No Data Yet</h2>
           <p className="text-muted-foreground font-mono text-sm mt-2 leading-relaxed">
-            Your radar is empty. Import a CSV file to start tracking and enriching your startup portfolio.
+            Your radar is empty. Import a CSV or XLSX file to start tracking and enriching your startup portfolio.
           </p>
         </div>
       </div>
@@ -313,7 +313,7 @@ function EmptyState() {
         <div className="flex flex-col items-center gap-2 p-5 border border-border rounded bg-secondary/20 text-center">
           <span className="text-2xl font-mono font-bold text-primary">01</span>
           <UploadCloud className="w-5 h-5 text-muted-foreground" />
-          <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Upload CSV</p>
+          <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">Upload spreadsheet</p>
         </div>
         <div className="flex flex-col items-center gap-2 p-5 border border-border rounded bg-secondary/20 text-center">
           <span className="text-2xl font-mono font-bold text-primary/60">02</span>
@@ -331,7 +331,7 @@ function EmptyState() {
         <Link href="/upload">
           <Button size="lg" className="font-mono uppercase tracking-wider gap-2 px-8">
             <UploadCloud className="w-4 h-4" />
-            Import CSV File
+            Import CSV or XLSX
             <ArrowRight className="w-4 h-4" />
           </Button>
         </Link>
